@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "SubtitleParser": {
+      "commandName": "Project",
+      "commandLineArgs": "-i  C:\\work\\ts\\The.Hitmans.Bodyguard.2017.1080p.BluRay.X264-AMIABLE.sub"
+    }
+  }
+}
