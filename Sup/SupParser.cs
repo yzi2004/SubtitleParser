@@ -99,6 +99,16 @@ namespace SubtitleParser.Sup
                     }
                     ++dsIdx;
                     objIdx = 0;
+
+                    StreamWriter sw = new StreamWriter($"{_settings.OutputPath}\\patt_{dsIdx}.txt");
+                    ptn.EntryObjects.ForEach(t => {
+                        var rgb = Utils.YCbCr2Rgb(t.Luminance,
+                               t.ColorDifferenceRed,
+                               t.ColorDifferenceBlue);
+                        sw.WriteLine($"[{t.PaletteEntryID}] A={t.Transparency};R={rgb.r};G={rgb.g};B={rgb.b}");
+                    });
+                    sw.Close();
+
                     ds.PCSData.PCSObjects.ForEach(pcsObj =>
                     {
                         ODSData odsData = ds.ODSDatas.Where(t => t.ObjectID == pcsObj.ObjectID).FirstOrDefault();

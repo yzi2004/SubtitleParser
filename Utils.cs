@@ -99,22 +99,28 @@ namespace SubtitleParser
             return Convert.ToString(value, 2).PadLeft(digits, '0');
         }
 
-       
-        /// <summary>
-        /// Get two bytes word stored in endian order
-        /// </summary>
-        /// <param name="buffer">Byte array</param>
-        /// <param name="index">Index in byte array</param>
-        /// <returns>Word as int</returns>
-        public static int GetEndianWord(byte[] buffer, int index)
-        {
-            if (index + 1 < buffer.Length)
-            {
-                return (buffer[index] << 8) | buffer[index + 1];
-            }
 
-            return 0;
+        public static (uint r, uint g, uint b) YCbCr2Rgb(uint y, uint cb, uint cr)
+        {
+            double r, g, b;
+
+            y -= 16;
+            cb -= 128;
+            cr -= 128;
+
+            var y1 = y * 1.164383562;
+
+            r = y1 + cr * 1.792741071;
+            g = y1 - cr * 0.5329093286 - cb * 0.2132486143;
+            b = y1 + cb * 2.112401786;
+
+
+            r = (uint)(r + 0.5) < 0 ? 0 : ((uint)(r + 0.5) > 255 ? 255 : r + 0.5);
+            g = (uint)(g + 0.5) < 0 ? 0 : ((uint)(g + 0.5) > 255 ? 255 : g + 0.5);
+            b = (uint)(b + 0.5) < 0 ? 0 : ((uint)(b + 0.5) > 255 ? 255 : b + 0.5);
+
+            return ((uint)r, (uint)g, (uint)b);
         }
-        
+
     }
 }

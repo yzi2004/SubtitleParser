@@ -54,14 +54,9 @@ namespace SubtitleParser.Sup
     public class PCSData : Segment
     {
         /// <summary>
-        /// Video width in pixels 
+        /// Video Size in pixels 
         /// </summary>
         public Size Size { get; set; }
-
-        /// <summary>
-        /// Video height in pixels
-        /// </summary>
-        public uint Height { get; set; }
 
         /// <summary>
         /// Always 0x10. Can be ignored.

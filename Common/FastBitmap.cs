@@ -66,7 +66,7 @@ namespace SubtitleParser.Common
                     _ypos < _settings.ImageBorder.Width ||
                     _ypos >= _height - _settings.ImageBorder.Width;
 
-        public void EnsureBorder()
+        private void EnsureBorder()
         {
             while (isInEdge())
             {

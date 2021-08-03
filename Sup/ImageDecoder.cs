@@ -34,17 +34,18 @@ namespace SubtitleParser.Sup
                     }
                     else
                     {
-                        var rgb = YCbCr2Rgb(palettes[ColorTimes.colorIdx].Luminance,
+                        var rgb = Utils.YCbCr2Rgb(palettes[ColorTimes.colorIdx].Luminance,
                                 palettes[ColorTimes.colorIdx].ColorDifferenceRed,
                                 palettes[ColorTimes.colorIdx].ColorDifferenceBlue);
 
-                        if (palettes[ColorTimes.colorIdx].Transparency != 255)
+                        if (palettes[ColorTimes.colorIdx].Transparency !=255)
                         {
                             color = settings.SupBackground;
                         }
                         else
                         {
-                            color = Color.FromArgb((int)palettes[ColorTimes.colorIdx].Transparency, (int)rgb.r, (int)rgb.g, (int)rgb.b);
+                            //color = Color.Black;
+                            color = Color.FromArgb(0xff, (int)rgb.r, (int)rgb.g, (int)rgb.b);
                         }
                     }
 
@@ -102,27 +103,6 @@ namespace SubtitleParser.Sup
             }
 
             return (0, 0);
-        }
-
-        private (uint r, uint g, uint b) YCbCr2Rgb(uint y, uint cb, uint cr)
-        {
-            double r, g, b;
-
-            y -= 16;
-            cb -= 128;
-            cr -= 128;
-
-            var y1 = y * 1.164383562;
-
-            r = y1 + cr * 1.792741071;
-            g = y1 - cr * 0.5329093286 - cb * 0.2132486143;
-            b = y1 + cb * 2.112401786;
-
-            r = r < 0 ? 0 : (r > 255 ? 255 : r);
-            g = g < 0 ? 0 : (g > 255 ? 255 : g);
-            b = b < 0 ? 0 : (b > 255 ? 255 : b);
-
-            return ((uint)(r + 0.5), (uint)(g + 0.5), (uint)(b + 0.5));
         }
     }
 }

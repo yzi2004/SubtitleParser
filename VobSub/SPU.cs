@@ -10,21 +10,11 @@ namespace SubtitleParser.VobSub
     /// </summary>
     public class SPU
     {
+        public int? StreamNum { get; set; }
         public byte[] Data { get; set; }
-        public List<SPDCSQ> SPDCSQs { get; set; }
+        public List<SPDCSQ> SPDCSQs { get; set; } = new List<SPDCSQ>();
 
-        //    private enum DCC
-        //    {
-        //        ForcedStartDisplay = 0,
-        //        StartDisplay = 1,
-        //        StopDisplay = 2,
-        //        SetColor = 3,
-        //        SetContrast = 4,
-        //        SetDisplayArea = 5,
-        //        SetPixelDataAddress = 6,
-        //        ChangeColorAndContrast = 7,
-        //        End = 0xFF,
-        //    }
+        //    
 
         //    public TimeSpan Delay;
         //    private readonly byte[] _data;
@@ -534,17 +524,17 @@ namespace SubtitleParser.VobSub
             /// <summary>
             /// Start Display Delay Time. usual: 0　
             /// </summary>
-            public TimeSpan start { get; set; }
+            public TimeSpan Start { get; set; }
 
             /// <summary>
             /// Stop Display Delay Time.
             /// </summary>
-            public TimeSpan stop { get; set; }
+            public TimeSpan Stop { get; set; }
 
             /// <summary>
             /// Image Size
             /// </summary>
-            public Size imgSize { get; set; }
+            public Size ImgSize { get; set; }
 
             /// <summary>
             /// PXDtf
@@ -576,3 +566,4 @@ namespace SubtitleParser.VobSub
             public Color Emphasis2 { get; set; }
         }
     }
+}

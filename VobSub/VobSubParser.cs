@@ -1,14 +1,18 @@
 ﻿using SubtitleParser.Common;
+using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Xml.Linq;
+using static SubtitleParser.VobSub.SPU;
 
 namespace SubtitleParser.VobSub
 {
     public class VobSubParser
     {
         AppSettings _settings = null;
-        private Dictionary<int, List<DisplaySet>> _dispSetsList = new Dictionary<int, List<DisplaySet>>();
+        List<SPU> spuList = new List<SPU>();
 
         public VobSubParser(AppSettings settings)
         {
@@ -31,14 +35,18 @@ namespace SubtitleParser.VobSub
                 }
             }
 
-            //StreamWriter sw = new StreamWriter("C:\\Temp\\org.txt", false);
-            //pesList.ForEach(pes => sw.WriteLine(pes));
-            //sw.Close();
             MergePESPack(pesList);
-            //sw = new StreamWriter("C:\\Temp\\merged.txt", false);
-            //pesList.ForEach(pes => sw.WriteLine(pes));
-            //sw.Close();
-            //MergeVobSubPicUnits(pesList);
+
+            pesList.ForEach(pes =>
+            {
+                var spu = ParseToSPU(pes);
+                if (spu != null)
+                {
+                    spuList.Add(spu);
+                }
+            });
+
+            CheckSPU(spuList);
 
             return true;
         }
@@ -135,14 +143,6 @@ namespace SubtitleParser.VobSub
 
         private void MergePESPack(List<PES> pesList)
         {
-            //var pts = new TimeSpan();
-            //var ms = new MemoryStream();
-
-            //float ticksPerMillisecond = 90.000F;
-            //if (!_settings.IsPAL)
-            //{
-            //    ticksPerMillisecond = 90.090F * (23.976F / 24F);
-            //}
 
             for (int idx = pesList.Count - 1; idx > 0; idx--)
             {
@@ -161,93 +161,15 @@ namespace SubtitleParser.VobSub
                     }
                 }
             }
-
-            //foreach (var p in pesList)
-            //{
-            //    if (p.HasPTSInfo)
-            //    {
-            //        if (ms.Length > 0)
-            //        {
-            //            if (p.StreamNum.HasValue &&
-            //                !_dispSetsList.ContainsKey(p.StreamNum.Value))
-            //            {
-            //                lst = new List<VobSubDispSet>();
-            //                _dispSetsList.Add(p.StreamNum.Value, lst);
-            //            }
-            //            else
-            //            {
-            //                lst = _dispSetsList[p.StreamNum.Value];
-            //            }
-            //            lst.Add(new VobSubDispSet(ms.ToArray(), pts));
-            //        }
-
-            //        ms.Close();
-            //        ms = new MemoryStream();
-            //        pts = TimeSpan.FromMilliseconds(Convert.ToDouble(p.DST / ticksPerMillisecond)); //90000F * 1000)); (PAL)
-            //    }
-            //    p.WriteToStream(ms);
-            //}
-            //if (ms.Length > 0)
-            //{
-            //    lst.Add(new VobSubDispSet(ms.ToArray(), pts));
-            //}
-
-            //ms.Close();
-
-            //// Remove any bad packs
-            //foreach (var list in _dispSetsList.Values)
-            //{
-            //    for (int i = list.Count - 1; i >= 0; i--)
-            //    {
-            //        VobSubDispSet dispSet = list[i];
-            //        if (dispSet.SubPicture == null ||
-            //            dispSet.SubPicture.ImageDisplayArea.Width <= 3 ||
-            //            dispSet.SubPicture.ImageDisplayArea.Height <= 2)
-            //        {
-            //            list.RemoveAt(i);
-            //        }
-            //        else if (dispSet.EndTime.TotalSeconds - dispSet.StartTime.TotalSeconds < 0.1
-            //            && dispSet.SubPicture.ImageDisplayArea.Width <= 10
-            //            && dispSet.SubPicture.ImageDisplayArea.Height <= 10)
-            //        {
-            //            list.RemoveAt(i);
-            //        }
-            //    }
-            //}
-
-            //// Fix subs with no duration(completely normal) or negative duration or duration > 10 seconds
-            //foreach (var list in _dispSetsList.Values)
-            //{
-            //    for (int i = 0; i < list.Count; i++)
-            //    {
-            //        VobSubDispSet pack = list[i];
-            //        if (pack.SubPicture.Delay.TotalMilliseconds > 0)
-            //        {
-            //            pack.EndTime = pack.StartTime.Add(pack.SubPicture.Delay);
-            //        }
-
-            //        if (pack.EndTime < pack.StartTime || pack.EndTime.TotalMilliseconds - pack.StartTime.TotalMilliseconds > Utils.SubtitleMaximumDisplayMilliseconds)
-            //        {
-            //            if (i + 1 < list.Count)
-            //            {
-            //                pack.EndTime = TimeSpan.FromMilliseconds(list[i + 1].StartTime.TotalMilliseconds - Utils.MinimumMillisecondsBetweenLines);
-            //                if (pack.EndTime.TotalMilliseconds - pack.StartTime.TotalMilliseconds > Utils.SubtitleMaximumDisplayMilliseconds)
-            //                {
-            //                    pack.EndTime = TimeSpan.FromMilliseconds(pack.StartTime.TotalMilliseconds + Utils.SubtitleMaximumDisplayMilliseconds);
-            //                }
-            //            }
-            //            else
-            //            {
-            //                pack.EndTime = TimeSpan.FromMilliseconds(pack.StartTime.TotalMilliseconds + 3000);
-            //            }
-            //        }
-            //    }
-            //}
         }
 
         private SPU ParseToSPU(PES pes)
         {
-            SPU spu = new SPU();
+            SPU spu = new SPU()
+            {
+                Data = pes.Data,
+                StreamNum = pes.StreamNum
+            };
             using (BinaryReader br = new BinaryReader(new MemoryStream(pes.Data)))
             {
                 var size = br.ReadTwoBytes();
@@ -255,16 +177,167 @@ namespace SubtitleParser.VobSub
 
                 br.Goto(dcstqPos);
 
-
-                while (!br.EOF())
+                bool IsLastItem = false;
+                SPDCSQ spdcsq = new SPDCSQ();
+                while (!br.EOF() && !IsLastItem)
                 {
+                    var currPos = br.GetPos();
+
                     var delay = br.ReadTwoBytes();
                     var nextItem = br.ReadTwoBytes();
-                }
+                    if (nextItem == currPos)
+                    {
+                        IsLastItem = true;
+                    }
 
+
+                    var cmd = br.ReadByte();
+
+                    while (cmd != (byte)Constants.DCC.End)
+                    {
+                        switch (cmd)
+                        {
+                            case (byte)Constants.DCC.StartDisplay:
+                                spdcsq.Start = TimeSpan.FromMilliseconds((delay << 10) / 90.0);
+                                break;
+                            case (byte)Constants.DCC.StopDisplay:
+                                spdcsq.Stop = TimeSpan.FromMilliseconds((delay << 10) / 90.0);
+                                spu.SPDCSQs.Add(spdcsq);
+                                spdcsq = new SPDCSQ();
+                                break;
+                            case (byte)Constants.DCC.SetColor:
+                                var buf = br.ReadBytes(2);
+                                break;
+                            case (byte)Constants.DCC.SetDisplayArea:
+                                buf = br.ReadBytes(6);
+
+                                int startingX = (buf[0] << 8 | buf[1]) >> 4;
+                                int endingX = (buf[1] & 0b00001111) << 8 | buf[2];
+                                int startingY = (buf[3] << 8 | buf[4]) >> 4;
+                                int endingY = (buf[4] & 0b00001111) << 8 | buf[5];
+                                spdcsq.ImgSize = new Size(endingX - startingX, endingY - startingY);
+                                break;
+                            case (byte)Constants.DCC.SetPixelDataAddress:
+                                spdcsq.PXDtfOffset = br.ReadTwoBytes();
+                                spdcsq.PXDbfOffset = br.ReadTwoBytes();
+                                break;
+                            case (byte)Constants.DCC.SetContrast:
+                                buf = br.ReadBytes(2);
+                                break;
+                            case (byte)Constants.DCC.ChangeColorAndContrast:
+                                var siz = br.ReadTwoBytes();
+                                br.Forward(siz);
+                                break;
+                            default:
+                                break;
+
+                        }
+                        cmd = br.ReadByte();
+                    }
+                }
             }
 
             return spu;
         }
+
+        private void CheckSPU(List<SPU> spuList)
+        {
+
+            for (int i = spuList.Count - 1; i >= 0; i--)
+            {
+                for (int j = 0; j < spuList[i].SPDCSQs.Count; j--)
+                {
+                    var spdcsq = spuList[i].SPDCSQs[j];
+                    if (spdcsq.ImgSize.Width <= 3 || spdcsq.ImgSize.Height <= 2)
+                    {
+                        spuList[i].SPDCSQs.RemoveAt(j);
+                    }
+                    if (spdcsq.Stop.TotalSeconds - spdcsq.Start.TotalSeconds < 0.1 &&
+                        spdcsq.ImgSize.Width <= 10 &&
+                        spdcsq.ImgSize.Height <= 10)
+                    {
+                        spuList[i].SPDCSQs.RemoveAt(j);
+                    }
+                }
+
+                if (spuList[i].SPDCSQs.Count <= 0)
+                {
+                    spuList.RemoveAt(i);
+                }
+            }
+        }
+
+        //public FastBitmap GetBitmap(BinaryReader br,SPDCSQ dcsq)
+        //{
+        //    FastBitmap bitmap = new FastBitmap(dcsq.ImgSize,_settings);
+
+        //    int xPos = 0, yPos = 0;
+        //    bool isHalfByte = false;
+        //    while (xPos < dcsq.ImgSize.Width && yPos < dcsq.ImgSize.Height)
+        //    {
+        //        byte b1 = br.ReadByte();
+        //        byte b2 = br.ReadByte();
+
+        //        if (isHalfByte)
+        //        {
+        //            byte b3 = br.ReadByte();
+        //            b1 = (byte)(((b1 & 0b00001111) << 4) | ((b2 & 0b11110000) >> 4));
+        //            b2 = (byte)(((b2 & 0b00001111) << 4) | ((b3 & 0b11110000) >> 4));
+        //        }
+
+        //        if (b1 >> 2 == 0)
+        //        {
+        //            runLength = (b1 << 6) | (b2 >> 2);
+        //            color = b2 & 0b00000011;
+        //            if (runLength == 0)
+        //            {
+        //                // rest of line + skip 4 bits if Only half
+        //                restOfLine = true;
+        //                if (onlyHalf)
+        //                {
+        //                    onlyHalf = false;
+        //                    return 3;
+        //                }
+        //            }
+        //            return 2;
+        //        }
+
+        //        if (b1 >> 4 == 0)
+        //        {
+        //            runLength = (b1 << 2) | (b2 >> 6);
+        //            color = (b2 & 0b00110000) >> 4;
+        //            if (onlyHalf)
+        //            {
+        //                onlyHalf = false;
+        //                return 2;
+        //            }
+        //            onlyHalf = true;
+        //            return 1;
+        //        }
+
+        //        if (b1 >> 6 == 0)
+        //        {
+        //            runLength = b1 >> 2;
+        //            color = b1 & 0b00000011;
+        //            return 1;
+        //        }
+
+        //        runLength = b1 >> 6;
+        //        color = (b1 & 0b00110000) >> 4;
+
+        //        if (onlyHalf)
+        //        {
+        //            onlyHalf = false;
+        //            return 1;
+        //        }
+        //        onlyHalf = true;
+        //        return 0;
+        //    }
+
+            
+        //}
+
+        private 
+
     }
 }
