@@ -47,7 +47,7 @@ namespace SubtitleParser.Common
             return (bs.Position == bs.Length);
         }
 
-        public static bool Back(this BinaryReader binaryReader, int Count)
+        public static bool Back(this BinaryReader binaryReader, int Count = 1)
         {
             if (!binaryReader.BaseStream.CanSeek)
             {
@@ -66,7 +66,7 @@ namespace SubtitleParser.Common
             return true;
         }
 
-        public static bool Forward(this BinaryReader binaryReader, int Count)
+        public static bool Forward(this BinaryReader binaryReader, int Count = 1)
         {
             if (!binaryReader.BaseStream.CanSeek)
             {
@@ -102,7 +102,7 @@ namespace SubtitleParser.Common
             binaryReader.BaseStream.Seek(pos, SeekOrigin.Begin);
             return true;
         }
-        
+
         public static long GetPos(this BinaryReader binaryReader)
         {
             if (!binaryReader.BaseStream.CanSeek)

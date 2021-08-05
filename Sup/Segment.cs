@@ -13,12 +13,12 @@ namespace SubtitleParser.Sup
         /// <summary>
         /// Presentation Timestamp
         /// </summary>
-        public uint PTS { get; set; }
+        public TimeSpan PTS { get; set; }
 
         /// <summary>
         /// Decoding Timestamp
         /// </summary>
-        public uint DTS { get; set; }
+        public TimeSpan DTS { get; set; }
 
         /// <summary>
         /// 0x14: PDS

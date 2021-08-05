@@ -12,19 +12,14 @@ namespace SubtitleParser
     {
         public string InputFile { get; set; }
         public string OutputPath { get; set; }
-        public ImageFormat ImageFormat { get; set; }
-        public Color SupBackground { get; set; } = Color.Transparent;
 
-        /// <summary>
-        ///  use by VobSub subtitle.
-        /// </summary>
-        public bool IsPAL { get; set; }
-        public Border ImageBorder { get; set; } = new Border();
-        public VobSubFourColors SubCustomColors = new VobSubFourColors();
+        public Vobsub vobsub { get; set; } = new Vobsub();
+        public Sup sup { get; set; } = new Sup();
+        public Image image { get; set; } = new Image();
 
         public string GetImgExt()
         {
-            return ImageFormat.ToString().ToLower().Replace("jpeg", "jpg");
+            return image.ImageFormat.ToString().ToLower().Replace("jpeg", "jpg");
         }
 
         public bool IsSup => InputFile.ToLower().EndsWith(".sup");
@@ -36,67 +31,67 @@ namespace SubtitleParser
 
             InputFile = configurationRoot["input"];
             OutputPath = configurationRoot["output"];
-            SupBackground = Utils.TryParseColor(configurationRoot["sup_background"]);
-            ImageFormat = Utils.ConvImgFmt(configurationRoot["format"]);
+            string fmt = configurationRoot["format"];
 
-            var section = configurationRoot.GetSection("img_border");
-            string width = section["width"];
-            if (!string.IsNullOrWhiteSpace(width) && int.TryParse(width, out var result))
+            var section = configurationRoot.GetSection("image");
+
+            if (section != null)
             {
-                ImageBorder.Width = result;
-            }
-            string padding = section["padding"];
-            if (!string.IsNullOrWhiteSpace(padding) && int.TryParse(padding, out result))
-            {
-                ImageBorder.Padding = result;
-            }
-            string strColor = section["color"];
-            if (!string.IsNullOrWhiteSpace(strColor))
-            {
-                ImageBorder.color = Utils.TryParseColor(strColor);
-                if (ImageBorder.color.IsEmpty)
+                if (string.IsNullOrWhiteSpace(fmt))
                 {
-                    ImageBorder.color = Color.Transparent;
+                    fmt = section["format"];
+                }
+                section = section.GetSection("border");
+                if (section != null)
+                {
+                    string val = section["width"];
+                    if (!string.IsNullOrWhiteSpace(val) && int.TryParse(val, out var result))
+                    {
+                        image.Border.Width = result;
+                    }
+
+                    val = section["padding"];
+                    if (!string.IsNullOrWhiteSpace(val) && int.TryParse(val, out result))
+                    {
+                        image.Border.Padding = result;
+                    }
+
+                    val = section["color"];
+                    if (!string.IsNullOrWhiteSpace(val))
+                    {
+                        image.Border.BorderColor = Utils.TryParseColor(val, Color.Transparent);
+                    }
                 }
             }
 
-             section = configurationRoot.GetSection("vobsub_custom_colors");
+            image.ImageFormat = Utils.ConvImgFmt(fmt);
 
-            strColor = section["backgroud"];
-            if (!string.IsNullOrWhiteSpace(strColor))
+
+            section = configurationRoot.GetSection("vobsub");
+            if (section != null)
             {
-                var color = Utils.TryParseColor(strColor);
-                if (!color.IsEmpty)
+                section = section.GetSection("custom_color");
+                if (section != null)
                 {
-                    SubCustomColors.backgroud = color;
+                    var val = section["background"];
+                    vobsub.CustomColors.Background = Utils.TryParseColor(val, Color.Transparent);
+
+                    val = section["pattern"];
+                    vobsub.CustomColors.Pattern = Utils.TryParseColor(val, Color.Transparent);
+
+                    val = section["emphasis1"];
+                    vobsub.CustomColors.Emphasis1 = Utils.TryParseColor(val, Color.Transparent);
+
+                    val = section["emphasis2"];
+                    vobsub.CustomColors.Emphasis2 = Utils.TryParseColor(val, Color.Transparent);
                 }
             }
-            strColor = section["pattern"];
-            if (!string.IsNullOrWhiteSpace(strColor))
+
+            section = configurationRoot.GetSection("sup");
+            if (section != null)
             {
-                var color = Utils.TryParseColor(strColor);
-                if (!color.IsEmpty)
-                {
-                    SubCustomColors.pattern = color;
-                }
-            }
-            strColor = section["emphasis1"];
-            if (!string.IsNullOrWhiteSpace(strColor))
-            {
-                var color = Utils.TryParseColor(strColor);
-                if (!color.IsEmpty)
-                {
-                    SubCustomColors.emphasis1 = color;
-                }
-            }
-            strColor = section["emphasis2"];
-            if (!string.IsNullOrWhiteSpace(strColor))
-            {
-                var color = Utils.TryParseColor(strColor);
-                if (!color.IsEmpty)
-                {
-                    SubCustomColors.emphasis2 = color;
-                }
+                var val = section["background"];
+                sup.Background = Utils.TryParseColor(val, Color.Transparent);
             }
         }
 
@@ -146,24 +141,38 @@ namespace SubtitleParser
             }
             return true;
         }
-    }
 
-    public class Border
-    {
-        public Color color { get; set; } = Color.Transparent;
-        public int Width { get; set; } = 0;
-        public int Padding { get; set; } = 0;
+        public class Image
+        {
+            public Border Border { get; set; } = new Border();
+            public ImageFormat ImageFormat { get; set; } = ImageFormat.Jpeg;
+        }
 
-        public bool HasBorder => Padding > 0 || Width > 0;
+        public class Border
+        {
+            public Color BorderColor { get; set; } = Color.Transparent;
+            public int Width { get; set; } = 0;
+            public int Padding { get; set; } = 0;
+        }
 
-        public int EdgeWidth => Width + Padding;
-    }
+        public class Vobsub
+        {
+            public FourColors CustomColors { get; set; } = new FourColors();
+            public bool IsPal { get; set; } = false;
+        }
 
-    public class VobSubFourColors
-    {
-        public Color backgroud { get; set; } = Color.Transparent;
-        public Color pattern { get; set; } = Color.Transparent;
-        public Color emphasis1 { get; set; } = Color.Transparent;
-        public Color emphasis2 { get; set; } = Color.Transparent;
+        public class FourColors
+        {
+            public Color Background { get; set; } = Color.Transparent;
+            public Color Pattern { get; set; } = Color.Transparent;
+            public Color Emphasis1 { get; set; } = Color.Transparent;
+            public Color Emphasis2 { get; set; } = Color.Transparent;
+        }
+
+        public class Sup
+        {
+            public Color Background { get; set; } = Color.Transparent;
+            public bool ConvToBWColor { get; set; }
+        }
     }
 }

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Xml.Linq;
+using System.Text;
 using static SubtitleParser.VobSub.SPU;
 
 namespace SubtitleParser.VobSub
@@ -12,7 +12,8 @@ namespace SubtitleParser.VobSub
     public class VobSubParser
     {
         AppSettings _settings = null;
-        List<SPU> spuList = new List<SPU>();
+        List<SPU> _spuList = new List<SPU>();
+        List<Color> _palettes = new List<Color>();
 
         public VobSubParser(AppSettings settings)
         {
@@ -21,6 +22,8 @@ namespace SubtitleParser.VobSub
 
         public bool Parse()
         {
+            LoadPalettesFromIdx();
+
             var pesList = new List<PES>();
 
             using (BinaryReader br = new BinaryReader(new FileStream(_settings.InputFile, FileMode.Open)))
@@ -42,31 +45,56 @@ namespace SubtitleParser.VobSub
                 var spu = ParseToSPU(pes);
                 if (spu != null)
                 {
-                    spuList.Add(spu);
+                    _spuList.Add(spu);
                 }
             });
-
-            CheckSPU(spuList);
 
             return true;
         }
 
         public void Output()
         {
-            //    foreach (var pair in _dispSetsList)
-            //    {
-            //        string path = $"c:\\temp\\{pair.Key}\\";
-            //        if (!Directory.Exists(path))
-            //        {
-            //            Directory.CreateDirectory(path);
-            //        }
+            var streamNums = _spuList.Where(spu => spu.StreamNum.HasValue).Select(spu => spu.StreamNum.Value).Distinct();
 
-            //        for (int i = 0; i < pair.Value.Count; i++)
-            //        {
-            //            var bmp = pair.Value[i].SubPicture.GetBitmap(null, Color.Transparent, Color.Black, Color.Black, Color.Transparent, true);
-            //            bmp.Save($"{path}img_{i}.png", ImageFormat.Png);
-            //        }
-            //    }
+            foreach (var streamNum in streamNums)
+            {
+                string workingDir = _settings.OutputPath;
+
+                if (streamNums.Count() > 1)
+                {
+                    workingDir = Utils.EnsureDir($"{workingDir}\\{streamNum}");
+                }
+
+                string imgFolder = Utils.EnsureDir($"{workingDir}\\img");
+
+                StreamWriter sw = new StreamWriter($"{workingDir}\\timeline.srt");
+                int idx = 1;
+
+                _spuList.ForEach(spu =>
+                {
+
+                    if (spu.StreamNum.HasValue && spu.StreamNum == streamNum)
+                    {
+                        spu.SPDCSQs.ForEach(dcsq =>
+                        {
+                            Console.Write("@");
+
+                            string file = $"{idx:0000}.{_settings.GetImgExt()}";
+                            var bmp = ImgDecode(spu, dcsq);
+                            bmp.Save($"{imgFolder}\\{file}", _settings.image.ImageFormat);
+
+                            sw.WriteLine(idx++);
+                            var startTime = spu.StartTime + dcsq.Start;
+                            var stopTime = spu.StartTime + dcsq.Stop;
+                            sw.WriteLine($"{startTime:hh\\:mm\\:ss\\,fff} --> {stopTime:hh\\:mm\\:ss\\,fff}");
+                            sw.WriteLine(file);
+                            sw.WriteLine();
+                        });
+                    }
+                });
+
+                sw.Close();
+            }
         }
 
         private PES ReadPESPack(BinaryReader br)
@@ -143,7 +171,6 @@ namespace SubtitleParser.VobSub
 
         private void MergePESPack(List<PES> pesList)
         {
-
             for (int idx = pesList.Count - 1; idx > 0; idx--)
             {
                 var p = pesList[idx];
@@ -168,8 +195,10 @@ namespace SubtitleParser.VobSub
             SPU spu = new SPU()
             {
                 Data = pes.Data,
-                StreamNum = pes.StreamNum
+                StreamNum = pes.StreamNum,
+                StartTime = Utils.Ticks2TimeSpan((uint)pes.DST.Value, _settings.vobsub.IsPal)
             };
+
             using (BinaryReader br = new BinaryReader(new MemoryStream(pes.Data)))
             {
                 var size = br.ReadTwoBytes();
@@ -190,7 +219,6 @@ namespace SubtitleParser.VobSub
                         IsLastItem = true;
                     }
 
-
                     var cmd = br.ReadByte();
 
                     while (cmd != (byte)Constants.DCC.End)
@@ -207,6 +235,15 @@ namespace SubtitleParser.VobSub
                                 break;
                             case (byte)Constants.DCC.SetColor:
                                 var buf = br.ReadBytes(2);
+                                if (spdcsq.fourColor == null)
+                                {
+                                    spdcsq.fourColor = new FourColor();
+                                }
+                                spdcsq.fourColor.Emphasis2 = (byte)((buf[0] & 0b11110000) >> 4);
+                                spdcsq.fourColor.Emphasis1 = (byte)(buf[0] & 0b00001111);
+                                spdcsq.fourColor.Pattern = (byte)((buf[1] & 0b11110000) >> 4);
+                                spdcsq.fourColor.Background = (byte)(buf[1] & 0b00001111);
+
                                 break;
                             case (byte)Constants.DCC.SetDisplayArea:
                                 buf = br.ReadBytes(6);
@@ -223,10 +260,19 @@ namespace SubtitleParser.VobSub
                                 break;
                             case (byte)Constants.DCC.SetContrast:
                                 buf = br.ReadBytes(2);
+                                if (spdcsq.fourColor == null)
+                                {
+                                    spdcsq.fourColor = new FourColor();
+                                }
+                                spdcsq.fourColor.ContrastE2 = (byte)((buf[0] & 0b11110000) >> 4);
+                                spdcsq.fourColor.ContrastE1 = (byte)(buf[0] & 0b00001111);
+                                spdcsq.fourColor.ContrastP = (byte)((buf[1] & 0b11110000) >> 4);
+                                spdcsq.fourColor.ContrastB = (byte)(buf[1] & 0b00001111);
+
                                 break;
                             case (byte)Constants.DCC.ChangeColorAndContrast:
-                                var siz = br.ReadTwoBytes();
-                                br.Forward(siz);
+                                var lng = br.ReadTwoBytes();
+                                br.Forward(lng);
                                 break;
                             default:
                                 break;
@@ -240,104 +286,217 @@ namespace SubtitleParser.VobSub
             return spu;
         }
 
-        private void CheckSPU(List<SPU> spuList)
+        private Bitmap ImgDecode(SPU spu, SPDCSQ dcsq)
         {
+            FastBitmap fastBitmap = new FastBitmap(dcsq.ImgSize.Width + 1, dcsq.ImgSize.Height + 1);
+            var br = new HalfByteBinaryReader(spu.Data);
 
-            for (int i = spuList.Count - 1; i >= 0; i--)
+            br.Goto(dcsq.PXDtfOffset);
+            drawLines(br, fastBitmap, 0, dcsq);
+            br.Goto(dcsq.PXDbfOffset);
+            drawLines(br, fastBitmap, 1, dcsq);
+
+            if (_settings.image.Border.Padding > 0)
             {
-                for (int j = 0; j < spuList[i].SPDCSQs.Count; j--)
+                fastBitmap.AddMargin(_settings.image.Border.Padding, _settings.sup.Background);
+            }
+            if (_settings.image.Border.Width > 0)
+            {
+                fastBitmap.AddMargin(_settings.image.Border.Width, _settings.image.Border.BorderColor);
+            }
+
+            return fastBitmap.GetBitmap();
+        }
+
+        private void drawLines(HalfByteBinaryReader br, FastBitmap fastBitmap, int yStartPos, SPDCSQ dcsq)
+        {
+            int xPos = 0, yPos = yStartPos;
+
+            while (yPos < (dcsq.ImgSize.Height + 1) && !br.EOF())
+            {
+                var clrLen = GetColorRunLength(br);
+
+                if (clrLen.colorIdx == 0xff)
                 {
-                    var spdcsq = spuList[i].SPDCSQs[j];
-                    if (spdcsq.ImgSize.Width <= 3 || spdcsq.ImgSize.Height <= 2)
-                    {
-                        spuList[i].SPDCSQs.RemoveAt(j);
-                    }
-                    if (spdcsq.Stop.TotalSeconds - spdcsq.Start.TotalSeconds < 0.1 &&
-                        spdcsq.ImgSize.Width <= 10 &&
-                        spdcsq.ImgSize.Height <= 10)
-                    {
-                        spuList[i].SPDCSQs.RemoveAt(j);
-                    }
+                    break;
                 }
 
-                if (spuList[i].SPDCSQs.Count <= 0)
+                if (clrLen.runLength == 0)
                 {
-                    spuList.RemoveAt(i);
+                    for (; ; )
+                    {
+                        if (yPos < 3)
+                        {
+                            fastBitmap.SetPixel(xPos++, yPos, GetColor(dcsq, clrLen.colorIdx));
+                        }
+                        else
+                        {
+                            xPos++;
+                        }
+                        if (xPos >= dcsq.ImgSize.Width + 1)
+                        {
+                            break;
+                        }
+                    }
+                    xPos = 0;
+                    yPos += 2;
+                    br.ResetHalfByte();
+                }
+                else
+                {
+                    for (int i = 0; i < clrLen.runLength; i++)
+                    {
+                        if (yPos < 3)
+                        {
+                            fastBitmap.SetPixel(xPos++, yPos, GetColor(dcsq, clrLen.colorIdx));
+                        }
+                        else
+                        {
+                            xPos++;
+                        }
+                        if (xPos >= dcsq.ImgSize.Width + 1)
+                        {
+                            xPos = 0;
+                            yPos += 2;
+                            br.ResetHalfByte();
+                            break;
+                        }
+                    }
                 }
             }
         }
 
-        //public FastBitmap GetBitmap(BinaryReader br,SPDCSQ dcsq)
-        //{
-        //    FastBitmap bitmap = new FastBitmap(dcsq.ImgSize,_settings);
+        private (byte colorIdx, byte runLength) GetColorRunLength(HalfByteBinaryReader br)
+        {
+            byte runLength, colorIdx;
 
-        //    int xPos = 0, yPos = 0;
-        //    bool isHalfByte = false;
-        //    while (xPos < dcsq.ImgSize.Width && yPos < dcsq.ImgSize.Height)
-        //    {
-        //        byte b1 = br.ReadByte();
-        //        byte b2 = br.ReadByte();
+            //load first 4 bit
+            byte b1 = br.ReadFourBit();
+            if ((b1 & 0b00001100) != 0)
+            {
+                //1-3	4	n n c c
+                runLength = (byte)(b1 >> 2);
+                colorIdx = (byte)(b1 & 0b0011);
 
-        //        if (isHalfByte)
-        //        {
-        //            byte b3 = br.ReadByte();
-        //            b1 = (byte)(((b1 & 0b00001111) << 4) | ((b2 & 0b11110000) >> 4));
-        //            b2 = (byte)(((b2 & 0b00001111) << 4) | ((b3 & 0b11110000) >> 4));
-        //        }
+                return (colorIdx, runLength);
+            }
+            //load next 4 bit
+            b1 = (byte)((b1 << 4) | br.ReadFourBit());
 
-        //        if (b1 >> 2 == 0)
-        //        {
-        //            runLength = (b1 << 6) | (b2 >> 2);
-        //            color = b2 & 0b00000011;
-        //            if (runLength == 0)
-        //            {
-        //                // rest of line + skip 4 bits if Only half
-        //                restOfLine = true;
-        //                if (onlyHalf)
-        //                {
-        //                    onlyHalf = false;
-        //                    return 3;
-        //                }
-        //            }
-        //            return 2;
-        //        }
+            //4-15	8	0 0 n n n n c c
+            if ((b1 & 0b00110000) != 0)
+            {
+                runLength = (byte)(b1 >> 2);
+                colorIdx = (byte)(b1 & 0b00000011);
+                return (colorIdx, runLength);
+            }
 
-        //        if (b1 >> 4 == 0)
-        //        {
-        //            runLength = (b1 << 2) | (b2 >> 6);
-        //            color = (b2 & 0b00110000) >> 4;
-        //            if (onlyHalf)
-        //            {
-        //                onlyHalf = false;
-        //                return 2;
-        //            }
-        //            onlyHalf = true;
-        //            return 1;
-        //        }
+            //16-63	12	0 0 0 0 n n n n n n c c
+            if ((b1 & 0b00001100) != 0)
+            {
+                b1 = (byte)((b1 << 4) | br.ReadFourBit());
 
-        //        if (b1 >> 6 == 0)
-        //        {
-        //            runLength = b1 >> 2;
-        //            color = b1 & 0b00000011;
-        //            return 1;
-        //        }
+                runLength = (byte)(b1 >> 2);
+                colorIdx = (byte)(b1 & 0b00000011);
+                return (colorIdx, runLength);
+            }
 
-        //        runLength = b1 >> 6;
-        //        color = (b1 & 0b00110000) >> 4;
+            //64-255	16	0 0 0 0 0 0 n n n n n n n n c c
+            int buf = b1 << 8 | br.ReadByte(true);
+            runLength = (byte)(buf >> 2);
+            colorIdx = (byte)(b1 & 0b0000000011);
 
-        //        if (onlyHalf)
-        //        {
-        //            onlyHalf = false;
-        //            return 1;
-        //        }
-        //        onlyHalf = true;
-        //        return 0;
-        //    }
+            return (colorIdx, runLength);
+        }
 
-            
-        //}
+        private Color GetColor(SPDCSQ dcsq, int colorIdx)
+        {
+            if (dcsq.fourColor != null && _palettes != null)
+            {
+                switch (colorIdx)
+                {
+                    case 0:
+                        var idx = dcsq.fourColor.Background;
+                        var color = idx.HasValue && idx.Value < _palettes.Count ? _palettes[idx.Value] : _settings.vobsub.CustomColors.Background;
+                        if (dcsq.fourColor.ContrastB.HasValue)
+                        {
+                            color = Color.FromArgb(dcsq.fourColor.ContrastB.Value * 15, color);
+                        }
 
-        private 
+                        return color;
+                    case 1:
+                        idx = dcsq.fourColor.Pattern;
+                        color = idx.HasValue && idx.Value < _palettes.Count ? _palettes[idx.Value] : _settings.vobsub.CustomColors.Pattern;
+                        if (dcsq.fourColor.ContrastP.HasValue)
+                        {
+                            color = Color.FromArgb(dcsq.fourColor.ContrastP.Value * 15, color);
+                        }
+                        return color;
+                    case 2:
+                        idx = dcsq.fourColor.Emphasis1;
+                        color = idx.HasValue && idx.Value < _palettes.Count ? _palettes[idx.Value] : _settings.vobsub.CustomColors.Emphasis1;
+                        if (dcsq.fourColor.ContrastE1.HasValue)
+                        {
+                            color = Color.FromArgb(dcsq.fourColor.ContrastE1.Value * 15, color);
+                        }
+                        return color;
+                    case 3:
+                        idx = dcsq.fourColor.Emphasis2;
+                        color = idx.HasValue && idx.Value < _palettes.Count ? _palettes[idx.Value] : _settings.vobsub.CustomColors.Emphasis2;
+                        if (dcsq.fourColor.ContrastE2.HasValue)
+                        {
+                            color = Color.FromArgb(dcsq.fourColor.ContrastE2.Value * 15, color);
+                        }
+                        return color;
+                    default:
+                        return Color.Transparent;
+                }
+            }
+            else
+            {
+                switch (colorIdx)
+                {
+                    case 0:
+                        return _settings.vobsub.CustomColors.Background;
+                    case 1:
+                        return _settings.vobsub.CustomColors.Pattern;
+                    case 2:
+                        return _settings.vobsub.CustomColors.Emphasis1;
+                    case 3:
+                        return _settings.vobsub.CustomColors.Emphasis2;
+                    default:
+                        return Color.Transparent;
+                }
+            }
+        }
 
+        private void LoadPalettesFromIdx()
+        {
+            string idxFile = _settings.InputFile.ToLower().Replace(".sub", ".idx");
+            if (!File.Exists(idxFile))
+            {
+                return;
+            }
+
+            using (StreamReader sr = new StreamReader(idxFile, Encoding.Default))
+            {
+                while (!sr.EndOfStream)
+                {
+                    string str = sr.ReadLine();
+                    if (str.StartsWith("palette:"))
+                    {
+                        str = str.Substring("palette:".Length);
+
+                        var colors = str.Replace(" ", "").Split(',');
+
+                        foreach (var clr in colors)
+                        {
+                            _palettes.Add(Utils.TryParseColor(clr, Color.Black));
+                        }
+                    }
+                }
+                sr.Close();
+            }
+        }
     }
 }

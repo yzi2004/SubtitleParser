@@ -7,124 +7,114 @@ namespace SubtitleParser.Common
 {
     public class FastBitmap
     {
-        private Bitmap _bmp = null;
-        private BitmapData _bmpData = null;
-        private IntPtr _ptr = new IntPtr(0);
+        private byte[] _bitmapData;
 
-        private AppSettings _settings = null;
-        private int _xpos = 0;
-        private int _ypos = 0;
         private int _width = 0;
         private int _height = 0;
 
-        public FastBitmap(Bitmap bmp, AppSettings appSettings)
+        public FastBitmap(Bitmap bmp)
         {
-            _settings = appSettings;
-            _bmp = bmp;
             _width = bmp.Width;
             _height = bmp.Height;
-        }
 
-        public FastBitmap(Size size, AppSettings appSettings)
-        {
-            _settings = appSettings;
-            _width = size.Width + (_settings.ImageBorder.HasBorder ? 
-                    (_settings.ImageBorder.Width + _settings.ImageBorder.Padding) * 2 : 0);
-            _height = size.Height + (_settings.ImageBorder.HasBorder ?
-                    (_settings.ImageBorder.Width + _settings.ImageBorder.Padding) * 2 : 0);
-            _bmp = new Bitmap(_width, _height);
-        }
-
-        public FastBitmap(int width, int height, AppSettings appSettings)
-        {
-            _settings = appSettings;
-            _width = width + (_settings.ImageBorder.HasBorder ? 
-                    (_settings.ImageBorder.Width + _settings.ImageBorder.Padding) * 2 : 0);
-            _height = height + (_settings.ImageBorder.HasBorder ? 
-                    (_settings.ImageBorder.Width + _settings.ImageBorder.Padding) * 2 : 0);
-            _bmp = new Bitmap(_width, _height);
-        }
-
-        private void LockBits()
-        {
-            _bmpData = _bmp.LockBits(
-                        new Rectangle(0, 0, _bmp.Width, _bmp.Height),
-                        ImageLockMode.ReadWrite,
-                        PixelFormat.Format32bppArgb);
-            _ptr = _bmpData.Scan0;
-        }
-
-        public bool isInEdge() => _settings.ImageBorder.HasBorder &&
-                    _xpos < _width && _ypos < _height &&
-                (_xpos < _settings.ImageBorder.EdgeWidth ||
-                    _xpos >= _width - _settings.ImageBorder.EdgeWidth ||
-                    _ypos < _settings.ImageBorder.EdgeWidth ||
-                    _ypos >= _height - _settings.ImageBorder.EdgeWidth);
-
-        public bool isInBorder() => _xpos < _settings.ImageBorder.Width ||
-                    _xpos >= _width - _settings.ImageBorder.Width ||
-                    _ypos < _settings.ImageBorder.Width ||
-                    _ypos >= _height - _settings.ImageBorder.Width;
-
-        private void EnsureBorder()
-        {
-            while (isInEdge())
+            bool createdNewBitmap = false;
+            if (bmp.PixelFormat != PixelFormat.Format32bppArgb)
             {
-                if (isInBorder())
-                    addPixel(_settings.ImageBorder.color);
-                else if (_settings.IsSup)
+                var newBitmap = new Bitmap(bmp.Width, bmp.Height, PixelFormat.Format32bppArgb);
+                using (var gr = Graphics.FromImage(newBitmap))
                 {
-                    addPixel(_settings.SupBackground);
+                    gr.DrawImage(bmp, 0, 0);
+                }
+                bmp = newBitmap;
+                createdNewBitmap = true;
+            }
+
+            var bitmapData = bmp.LockBits(new Rectangle(0, 0, _width, _height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            _bitmapData = new byte[bitmapData.Stride * _height];
+            Marshal.Copy(bitmapData.Scan0, _bitmapData, 0, _bitmapData.Length);
+            bmp.UnlockBits(bitmapData);
+            if (createdNewBitmap)
+            {
+                bmp.Dispose();
+            }
+        }
+
+        public FastBitmap(Size size) :
+            this(size.Width, size.Height)
+        {
+        }
+
+        public FastBitmap(int width, int height)
+        {
+            _width = width;
+            _height = height;
+            _bitmapData = new byte[_height * _width * 4];
+        }
+
+        public void SetPixel(int x, int y, Color color)
+        {
+            var pos = (x * 4) + (y * _width * 4);
+            _bitmapData[pos] = color.B;
+            _bitmapData[pos + 1] = color.G;
+            _bitmapData[pos + 2] = color.R;
+            _bitmapData[pos + 3] = color.A;
+        }
+
+        public void AddMargin(int margin, Color color)
+        {
+            int newWidth = _width + margin * 2;
+            int newHeight = _height + margin * 2;
+            var newBitmapData = new byte[newWidth * newHeight * 4];
+
+            byte[] byt = new byte[] { color.R, color.G, color.B, color.A };
+
+
+            for (int y = 0; y < newHeight; y++)
+            {
+                //top margin and bottom margin
+                if (y < margin || y >= _height + margin)
+                {
+                    for (int x = 0; x < newWidth; x++)
+                    {
+                        Buffer.BlockCopy(byt, 0, newBitmapData, (y * newWidth * 4) + x * 4, 4);
+                    }
                 }
                 else
                 {
-                    addPixel(_settings.SubCustomColors.backgroud);
+                    //left Margin
+                    for (int x = 0; x < margin; x++)
+                    {
+                        Buffer.BlockCopy(byt, 0, newBitmapData, y * newWidth * 4 + x * 4, 4);
+                    }
+                    //body
+                    Buffer.BlockCopy(_bitmapData, (y - margin) * _width * 4, newBitmapData, y * newWidth * 4 + margin * 4, _width * 4);
+
+                    //right margin
+                    for (int x = _width + margin; x < newWidth; x++)
+                    {
+                        Buffer.BlockCopy(byt, 0, newBitmapData, y * newWidth * 4 + x * 4, 4);
+                    }
                 }
             }
-        }
 
-        public void AddPixel(Color color)
-        {
-            EnsureBorder();
-            addPixel(color);
-        }
-
-        private void addPixel(Color color)
-        {
-            if (_bmpData == null)
-            {
-                LockBits();
-            }
-
-            byte[] byt = new byte[] { color.R, color.G, color.B, color.A };
-            Marshal.Copy(byt, 0, _ptr, 4);
-            _ptr += 4;
-
-            ++this._xpos;
-            if (this._xpos < this._width)
-                return;
-            ++this._ypos;
-            this._xpos = 0;
-        }
-
-        public void Unlock()
-        {
-            if (_bmpData != null)
-            {
-                _bmp.UnlockBits(_bmpData);
-                _bmpData = null;
-            }
+            _width = newWidth;
+            _height = newHeight;
+            _bitmapData = newBitmapData;
         }
 
         public Bitmap GetBitmap()
         {
-            Unlock();
-            return _bmp;
+            var bitmap = new Bitmap(_width, _height, PixelFormat.Format32bppArgb);
+            var bitmapData = bitmap.LockBits(new Rectangle(0, 0, _width, _height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            var destination = bitmapData.Scan0;
+            Marshal.Copy(_bitmapData, 0, destination, _bitmapData.Length);
+            bitmap.UnlockBits(bitmapData);
+            return bitmap;
         }
 
         public void SaveAs(string fileName)
         {
-            Unlock();
+            var bmp = GetBitmap();
 
             ImageFormat fmt = ImageFormat.Bmp;
 
@@ -145,7 +135,7 @@ namespace SubtitleParser.Common
                 fmt = ImageFormat.Tiff;
             }
 
-            _bmp.Save(fileName, fmt);
+            bmp.Save(fileName, fmt);
         }
     }
 }

@@ -1,10 +1,10 @@
-﻿using System;
+﻿using SubtitleParser.Common;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
-using SubtitleParser.Common;
 namespace SubtitleParser.Sup
 {
     public class SupParser
@@ -84,14 +84,14 @@ namespace SubtitleParser.Sup
                         return;
                     }
                     sw.WriteLine(dsIdx);
-                    sw.WriteLine(Utils.FormatDatetime(startDS.PCSData.PTS) + " --> " + Utils.FormatDatetime(ds.PCSData.PTS));
+                    sw.WriteLine($"{startDS.PCSData.PTS:HH:mm:ss,fff} --> {ds.PCSData.PTS:HH:mm:ss,fff}");
                     sw.WriteLine(sbImgs.ToString());
                     sbImgs = new StringBuilder();
                 }
                 else
                 {
                     startDS = ds;
-                    Console.Write("+");
+                    Console.Write("*");
                     PDSData ptn = ds.PDSDatas.Where(t => t.PaletteID == ds.PCSData.PaletteID).FirstOrDefault();
                     if (ptn == null && ds.PDSDatas.Count > 0)
                     {
@@ -100,14 +100,7 @@ namespace SubtitleParser.Sup
                     ++dsIdx;
                     objIdx = 0;
 
-                    StreamWriter sw = new StreamWriter($"{_settings.OutputPath}\\patt_{dsIdx}.txt");
-                    ptn.EntryObjects.ForEach(t => {
-                        var rgb = Utils.YCbCr2Rgb(t.Luminance,
-                               t.ColorDifferenceRed,
-                               t.ColorDifferenceBlue);
-                        sw.WriteLine($"[{t.PaletteEntryID}] A={t.Transparency};R={rgb.r};G={rgb.g};B={rgb.b}");
-                    });
-                    sw.Close();
+                    var imgFolder = Utils.EnsureDir($"{_settings.OutputPath}\\img");
 
                     ds.PCSData.PCSObjects.ForEach(pcsObj =>
                     {
@@ -116,10 +109,10 @@ namespace SubtitleParser.Sup
                         {
                             return;
                         }
-                        string str = string.Format("{0}_{1}.{2}", dsIdx, ++objIdx, _settings.GetImgExt());
-                        sbImgs.AppendLine(str);
-                        var bmp = new ImageDecoder().Decode(odsData.ObjectData, odsData.ImageSize, ptn.EntryObjects, _settings);
-                        bmp.Save(_settings.OutputPath + "\\" + str, _settings.ImageFormat);
+                        string file = string.Format("{0}_{1}.{2}", dsIdx, ++objIdx, _settings.GetImgExt());
+                        sbImgs.AppendLine(file);
+                        var bmp = ImgDecode(odsData.ObjectData, odsData.ImageSize, ptn.EntryObjects);
+                        bmp.Save($"{imgFolder}\\{file}", _settings.image.ImageFormat);
                     });
                 }
             });
@@ -156,8 +149,8 @@ namespace SubtitleParser.Sup
         private Segment ReadSegHeader(BinaryReader binaryReader)
         {
             Segment seg = new Segment();
-            seg.PTS = binaryReader.ReadFourBytes();
-            seg.DTS = binaryReader.ReadFourBytes();
+            seg.PTS = Utils.Ticks2TimeSpan(binaryReader.ReadFourBytes());
+            seg.DTS = Utils.Ticks2TimeSpan(binaryReader.ReadFourBytes());
             seg.Type = (SegType)(binaryReader.ReadByte());
             seg.DataSize = binaryReader.ReadTwoBytes();
 
@@ -284,6 +277,118 @@ namespace SubtitleParser.Sup
                 }
                 return false;
             }
+        }
+
+        private Bitmap ImgDecode(byte[] data, Size size, List<PDSEntryObject> palettes)
+        {
+            int pos = 0;
+            FastBitmap fastBitmap = new FastBitmap(size);
+            int xpos = 0; int ypos = 0;
+
+            for (; ; )
+            {
+                if (pos >= data.Length)
+                {
+                    break;
+                }
+                var ColorTimes = GetColorTimes(data, pos);
+
+                if (ColorTimes.colorIdx == 0 && ColorTimes.times == 0)
+                {
+                    continue;
+                }
+                else
+                {
+                    Color color;
+                    if (ColorTimes.colorIdx == 0xff)
+                    {
+                        color = _settings.sup.Background;
+                    }
+                    else
+                    {
+                        var rgb = Utils.YCbCr2Rgb(palettes[ColorTimes.colorIdx].Luminance,
+                                palettes[ColorTimes.colorIdx].ColorDifferenceRed,
+                                palettes[ColorTimes.colorIdx].ColorDifferenceBlue);
+
+                        if (palettes[ColorTimes.colorIdx].Transparency != 255)
+                        {
+                            color = _settings.sup.Background;
+                        }
+                        else
+                        {
+                            color = Color.FromArgb(0xff, (int)rgb.r, (int)rgb.g, (int)rgb.b);
+                        }
+                    }
+
+                    for (int j = 0; j < ColorTimes.times; j++)
+                    {
+                        fastBitmap.SetPixel(xpos++, ypos, color);
+                        if (xpos >= size.Width)
+                        {
+                            ypos++;
+                            xpos = 0;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (_settings.image.Border.Padding > 0)
+            {
+                fastBitmap.AddMargin(_settings.image.Border.Padding, _settings.sup.Background);
+            }
+            if (_settings.image.Border.Width > 0)
+            {
+                fastBitmap.AddMargin(_settings.image.Border.Width, _settings.image.Border.BorderColor);
+            }
+
+            return fastBitmap.GetBitmap();
+        }
+
+        private (int colorIdx, ushort times) GetColorTimes(byte[] data, int pos)
+        {
+            byte b0 = data[pos++];
+            if (b0 != 0) //CCCCCCCC
+            {
+                return (b0, 1);
+            }
+
+            var b1 = data[pos++];
+
+            if (b1 == 0) //00000000 00000000
+            {
+                //End of Line 
+                return (0, 0);
+            }
+
+            var flg = b1 & 0xC0;
+            if (flg == 0) //00000000 00LLLLLL
+            {
+                var times = (ushort)(b1 & 0x3f);
+                return (0, times);
+            }
+
+            var b2 = data[pos++];
+            if (flg == 0x40) //00000000 01LLLLLL LLLLLLLL
+            {
+                var times = (ushort)(((b1 & 0x3f) << 8) + b2);
+                return (0, times);
+            }
+
+            if (flg == 0x80) //00000000 10LLLLLL CCCCCCCC
+            {
+                var times = (ushort)(b1 & 0x3f);
+                return (b2, times);
+            }
+
+            if (flg == 0xC0) //00000000 11LLLLLL LLLLLLLL CCCCCCCC
+            {
+                var b3 = data[pos++];
+                var times = (ushort)(((b1 & 0x3f) << 8) + b2);
+                return (b3, times);
+            }
+
+            return (0, 0);
         }
     }
 }
