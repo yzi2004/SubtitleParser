@@ -21,10 +21,10 @@ namespace SubtitleParser.Sup
         {
             try
             {
-                using (BinaryReader br = new BinaryReader(new FileStream(_settings.InputFile, FileMode.Open)))
+                using (ParseUseBinaryReader br = new ParseUseBinaryReader(new FileStream(_settings.InputFile, FileMode.Open)))
                 {
                     DisplaySet set = new DisplaySet();
-                    while (!br.EOF())
+                    while (!br.EOF)
                     {
                         var segment = Read(br);
                         if (segment is PCSData)
@@ -119,7 +119,7 @@ namespace SubtitleParser.Sup
             sw.Close();
         }
 
-        private Segment Read(BinaryReader binaryReader)
+        private Segment Read(ParseUseBinaryReader binaryReader)
         {
             if (!CheckMagicNumber(binaryReader, false))
             {
@@ -146,7 +146,7 @@ namespace SubtitleParser.Sup
             }
         }
 
-        private Segment ReadSegHeader(BinaryReader binaryReader)
+        private Segment ReadSegHeader(ParseUseBinaryReader binaryReader)
         {
             Segment seg = new Segment();
             seg.PTS = Utils.Ticks2TimeSpan(binaryReader.ReadFourBytes());
@@ -157,7 +157,7 @@ namespace SubtitleParser.Sup
             return seg;
         }
 
-        private PCSData ReadPCSData(BinaryReader binaryReader, Segment header)
+        private PCSData ReadPCSData(ParseUseBinaryReader binaryReader, Segment header)
         {
             PCSData data = new PCSData(header);
             data.Size = new Size(binaryReader.ReadTwoBytes(), binaryReader.ReadTwoBytes());
@@ -191,7 +191,7 @@ namespace SubtitleParser.Sup
             return data;
         }
 
-        private WDSData ReadWDSData(BinaryReader binaryReader, Segment header)
+        private WDSData ReadWDSData(ParseUseBinaryReader binaryReader, Segment header)
         {
             WDSData data = new WDSData(header);
 
@@ -239,7 +239,7 @@ namespace SubtitleParser.Sup
             return data;
         }
 
-        private ODSData ReadODSData(BinaryReader binaryReader, Segment header)
+        private ODSData ReadODSData(ParseUseBinaryReader binaryReader, Segment header)
         {
             ODSData data = new ODSData();
             data.ObjectID = binaryReader.ReadTwoBytes();
@@ -252,7 +252,7 @@ namespace SubtitleParser.Sup
             return data;
         }
 
-        private bool CheckMagicNumber(BinaryReader binaryReader, bool BackIfFalse = false)
+        private bool CheckMagicNumber(ParseUseBinaryReader binaryReader, bool BackIfFalse = false)
         {
             var bytes = binaryReader.ReadBytes(2);
             if (bytes.Length < 2)

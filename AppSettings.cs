@@ -33,6 +33,16 @@ namespace SubtitleParser
             OutputPath = configurationRoot["output"];
             string fmt = configurationRoot["format"];
 
+            string val = configurationRoot["fps"];
+            if ((val ?? "") == "pal")
+            {
+                vobsub.fps = FPS.PAL;
+            }
+            else
+            {
+                vobsub.fps = FPS.NTSC;
+            }
+
             var section = configurationRoot.GetSection("image");
 
             if (section != null)
@@ -44,7 +54,7 @@ namespace SubtitleParser
                 section = section.GetSection("border");
                 if (section != null)
                 {
-                    string val = section["width"];
+                    val = section["width"];
                     if (!string.IsNullOrWhiteSpace(val) && int.TryParse(val, out var result))
                     {
                         image.Border.Width = result;
@@ -70,10 +80,16 @@ namespace SubtitleParser
             section = configurationRoot.GetSection("vobsub");
             if (section != null)
             {
+                val = section["use_custom_color"];
+                if ((val ?? "").ToLower() == "false")
+                {
+                    vobsub.UseCustomColors = false;
+                }
+
                 section = section.GetSection("custom_color");
                 if (section != null)
                 {
-                    var val = section["background"];
+                    val = section["background"];
                     vobsub.CustomColors.Background = Utils.TryParseColor(val, Color.Transparent);
 
                     val = section["pattern"];
@@ -90,7 +106,7 @@ namespace SubtitleParser
             section = configurationRoot.GetSection("sup");
             if (section != null)
             {
-                var val = section["background"];
+                val = section["background"];
                 sup.Background = Utils.TryParseColor(val, Color.Transparent);
             }
         }
@@ -100,6 +116,7 @@ namespace SubtitleParser
             Dictionary<string, string> dictionary = new Dictionary<string, string>()
                 {{"-i","input"},{"--input","input"},
                  {"-o","output"},{"--output","output"},
+                { "--fps","fps"},
                  {"-f","format"},{"--format","format"}};
 
             return new ConfigurationBuilder()
@@ -158,7 +175,8 @@ namespace SubtitleParser
         public class Vobsub
         {
             public FourColors CustomColors { get; set; } = new FourColors();
-            public bool IsPal { get; set; } = false;
+            public FPS fps { get; set; } = FPS.PAL;
+            public bool UseCustomColors { get; set; } = true;
         }
 
         public class FourColors

@@ -14,6 +14,7 @@ namespace SubtitleParser.VobSub
         AppSettings _settings = null;
         List<SPU> _spuList = new List<SPU>();
         List<Color> _palettes = new List<Color>();
+        StreamWriter swTrace;
 
         public VobSubParser(AppSettings settings)
         {
@@ -26,9 +27,9 @@ namespace SubtitleParser.VobSub
 
             var pesList = new List<PES>();
 
-            using (BinaryReader br = new BinaryReader(new FileStream(_settings.InputFile, FileMode.Open)))
+            using (ParseUseBinaryReader br = new ParseUseBinaryReader(new FileStream(_settings.InputFile, FileMode.Open)))
             {
-                while (!br.EOF())
+                while (!br.EOF)
                 {
                     var pes = ReadPESPack(br);
                     if (pes != null)
@@ -78,11 +79,11 @@ namespace SubtitleParser.VobSub
                         spu.SPDCSQs.ForEach(dcsq =>
                         {
                             Console.Write("@");
-
+                            swTrace = new StreamWriter($"{imgFolder}\\{idx:0000}.txt");
                             string file = $"{idx:0000}.{_settings.GetImgExt()}";
                             var bmp = ImgDecode(spu, dcsq);
                             bmp.Save($"{imgFolder}\\{file}", _settings.image.ImageFormat);
-
+                            swTrace.Close();
                             sw.WriteLine(idx++);
                             var startTime = spu.StartTime + dcsq.Start;
                             var stopTime = spu.StartTime + dcsq.Stop;
@@ -97,7 +98,7 @@ namespace SubtitleParser.VobSub
             }
         }
 
-        private PES ReadPESPack(BinaryReader br)
+        private PES ReadPESPack(ParseUseBinaryReader br)
         {
             PES pes = new PES();
             var startPos = br.GetPos();
@@ -196,10 +197,10 @@ namespace SubtitleParser.VobSub
             {
                 Data = pes.Data,
                 StreamNum = pes.StreamNum,
-                StartTime = Utils.Ticks2TimeSpan((uint)pes.DST.Value, _settings.vobsub.IsPal)
+                StartTime = Utils.Ticks2TimeSpan((uint)pes.DST.Value, _settings.vobsub.fps)
             };
 
-            using (BinaryReader br = new BinaryReader(new MemoryStream(pes.Data)))
+            using (ParseUseBinaryReader br = new ParseUseBinaryReader(pes.Data))
             {
                 var size = br.ReadTwoBytes();
                 var dcstqPos = br.ReadTwoBytes();
@@ -208,7 +209,7 @@ namespace SubtitleParser.VobSub
 
                 bool IsLastItem = false;
                 SPDCSQ spdcsq = new SPDCSQ();
-                while (!br.EOF() && !IsLastItem)
+                while (!br.EOF && !IsLastItem)
                 {
                     var currPos = br.GetPos();
 
@@ -264,10 +265,10 @@ namespace SubtitleParser.VobSub
                                 {
                                     spdcsq.fourColor = new FourColor();
                                 }
-                                spdcsq.fourColor.ContrastE2 = (byte)((buf[0] & 0b11110000) >> 4);
-                                spdcsq.fourColor.ContrastE1 = (byte)(buf[0] & 0b00001111);
-                                spdcsq.fourColor.ContrastP = (byte)((buf[1] & 0b11110000) >> 4);
-                                spdcsq.fourColor.ContrastB = (byte)(buf[1] & 0b00001111);
+                                spdcsq.fourColor.ContrEm2 = (byte)((buf[0] & 0b11110000) >> 4);
+                                spdcsq.fourColor.ContrEm1 = (byte)(buf[0] & 0b00001111);
+                                spdcsq.fourColor.ContrPtn = (byte)((buf[1] & 0b11110000) >> 4);
+                                spdcsq.fourColor.ContrBG = (byte)(buf[1] & 0b00001111);
 
                                 break;
                             case (byte)Constants.DCC.ChangeColorAndContrast:
@@ -289,7 +290,7 @@ namespace SubtitleParser.VobSub
         private Bitmap ImgDecode(SPU spu, SPDCSQ dcsq)
         {
             FastBitmap fastBitmap = new FastBitmap(dcsq.ImgSize.Width + 1, dcsq.ImgSize.Height + 1);
-            var br = new HalfByteBinaryReader(spu.Data);
+            var br = new ParseUseBinaryReader(spu.Data);
 
             br.Goto(dcsq.PXDtfOffset);
             drawLines(br, fastBitmap, 0, dcsq);
@@ -308,11 +309,11 @@ namespace SubtitleParser.VobSub
             return fastBitmap.GetBitmap();
         }
 
-        private void drawLines(HalfByteBinaryReader br, FastBitmap fastBitmap, int yStartPos, SPDCSQ dcsq)
+        private void drawLines(ParseUseBinaryReader br, FastBitmap fastBitmap, int yStartPos, SPDCSQ dcsq)
         {
             int xPos = 0, yPos = yStartPos;
 
-            while (yPos < (dcsq.ImgSize.Height + 1) && !br.EOF())
+            while (yPos < (dcsq.ImgSize.Height + 1) && !br.EOF)
             {
                 var clrLen = GetColorRunLength(br);
 
@@ -321,18 +322,22 @@ namespace SubtitleParser.VobSub
                     break;
                 }
 
+                var color = GetColor(dcsq, clrLen.colorIdx);
+
                 if (clrLen.runLength == 0)
                 {
                     for (; ; )
                     {
-                        if (yPos < 3)
+                        swTrace.Write(clrLen.colorIdx);
+                        if (xPos % 10 == 0 || yPos % 10 == 0)
                         {
-                            fastBitmap.SetPixel(xPos++, yPos, GetColor(dcsq, clrLen.colorIdx));
+                            fastBitmap.SetPixel(xPos++, yPos, Color.Red);
                         }
                         else
                         {
-                            xPos++;
+                            fastBitmap.SetPixel(xPos++, yPos, color);
                         }
+
                         if (xPos >= dcsq.ImgSize.Width + 1)
                         {
                             break;
@@ -340,25 +345,29 @@ namespace SubtitleParser.VobSub
                     }
                     xPos = 0;
                     yPos += 2;
+                    swTrace.WriteLine();
                     br.ResetHalfByte();
                 }
                 else
                 {
                     for (int i = 0; i < clrLen.runLength; i++)
                     {
-                        if (yPos < 3)
+                        swTrace.Write(clrLen.colorIdx);
+                        if (xPos % 10 == 0 || yPos % 10 == 0)
                         {
-                            fastBitmap.SetPixel(xPos++, yPos, GetColor(dcsq, clrLen.colorIdx));
+                            fastBitmap.SetPixel(xPos++, yPos, Color.Red);
                         }
                         else
                         {
-                            xPos++;
+                            fastBitmap.SetPixel(xPos++, yPos, color);
                         }
+
                         if (xPos >= dcsq.ImgSize.Width + 1)
                         {
                             xPos = 0;
                             yPos += 2;
                             br.ResetHalfByte();
+                            swTrace.WriteLine();
                             break;
                         }
                     }
@@ -366,7 +375,8 @@ namespace SubtitleParser.VobSub
             }
         }
 
-        private (byte colorIdx, byte runLength) GetColorRunLength(HalfByteBinaryReader br)
+
+        private (byte colorIdx, byte runLength) GetColorRunLength(ParseUseBinaryReader br)
         {
             byte runLength, colorIdx;
 
@@ -411,63 +421,43 @@ namespace SubtitleParser.VobSub
 
         private Color GetColor(SPDCSQ dcsq, int colorIdx)
         {
-            if (dcsq.fourColor != null && _palettes != null)
+            switch (colorIdx)
             {
-                switch (colorIdx)
-                {
-                    case 0:
-                        var idx = dcsq.fourColor.Background;
-                        var color = idx.HasValue && idx.Value < _palettes.Count ? _palettes[idx.Value] : _settings.vobsub.CustomColors.Background;
-                        if (dcsq.fourColor.ContrastB.HasValue)
-                        {
-                            color = Color.FromArgb(dcsq.fourColor.ContrastB.Value * 15, color);
-                        }
+                case 0:
+                    return GetColor(dcsq.fourColor?.Background, dcsq.fourColor?.ContrBG, _settings.vobsub.CustomColors.Background);
+                case 1:
+                    return GetColor(dcsq.fourColor?.Pattern, dcsq.fourColor?.ContrPtn, _settings.vobsub.CustomColors.Pattern);
+                case 2:
+                    return GetColor(dcsq.fourColor?.Emphasis1, dcsq.fourColor?.ContrEm1, _settings.vobsub.CustomColors.Emphasis1);
+                case 3:
+                    return GetColor(dcsq.fourColor?.Emphasis2, dcsq.fourColor?.ContrEm2, _settings.vobsub.CustomColors.Emphasis2);
+                default:
+                    return Color.Transparent;
+            }
 
-                        return color;
-                    case 1:
-                        idx = dcsq.fourColor.Pattern;
-                        color = idx.HasValue && idx.Value < _palettes.Count ? _palettes[idx.Value] : _settings.vobsub.CustomColors.Pattern;
-                        if (dcsq.fourColor.ContrastP.HasValue)
-                        {
-                            color = Color.FromArgb(dcsq.fourColor.ContrastP.Value * 15, color);
-                        }
-                        return color;
-                    case 2:
-                        idx = dcsq.fourColor.Emphasis1;
-                        color = idx.HasValue && idx.Value < _palettes.Count ? _palettes[idx.Value] : _settings.vobsub.CustomColors.Emphasis1;
-                        if (dcsq.fourColor.ContrastE1.HasValue)
-                        {
-                            color = Color.FromArgb(dcsq.fourColor.ContrastE1.Value * 15, color);
-                        }
-                        return color;
-                    case 3:
-                        idx = dcsq.fourColor.Emphasis2;
-                        color = idx.HasValue && idx.Value < _palettes.Count ? _palettes[idx.Value] : _settings.vobsub.CustomColors.Emphasis2;
-                        if (dcsq.fourColor.ContrastE2.HasValue)
-                        {
-                            color = Color.FromArgb(dcsq.fourColor.ContrastE2.Value * 15, color);
-                        }
-                        return color;
-                    default:
-                        return Color.Transparent;
-                }
-            }
-            else
+        }
+
+        private Color GetColor(int? palette, int? contr, Color customColor)
+        {
+            if (_settings.vobsub.UseCustomColors)
             {
-                switch (colorIdx)
-                {
-                    case 0:
-                        return _settings.vobsub.CustomColors.Background;
-                    case 1:
-                        return _settings.vobsub.CustomColors.Pattern;
-                    case 2:
-                        return _settings.vobsub.CustomColors.Emphasis1;
-                    case 3:
-                        return _settings.vobsub.CustomColors.Emphasis2;
-                    default:
-                        return Color.Transparent;
-                }
+                return customColor;
             }
+
+            if ((palette ?? -1) >= 0 && (palette ?? -1) < (_palettes?.Count ?? -1))
+            {
+                var color = _palettes[palette.Value];
+                if (contr.HasValue)
+                {
+                    if (contr.Value >= 0 && contr.Value <= 15)
+                    {
+                        return Color.FromArgb(contr.Value * 17, color);
+                    }
+                }
+                return color;
+            }
+
+            return customColor;
         }
 
         private void LoadPalettesFromIdx()

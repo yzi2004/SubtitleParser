@@ -67,10 +67,10 @@ namespace SubtitleParser.VobSub
             public int? Emphasis1 { get; set; }
             public int? Emphasis2 { get; set; }
 
-            public int? ContrastB { get; set; }
-            public int? ContrastP { get; set; }
-            public int? ContrastE1 { get; set; }
-            public int? ContrastE2 { get; set; }
+            public int? ContrBG { get; set; }
+            public int? ContrPtn { get; set; }
+            public int? ContrEm1 { get; set; }
+            public int? ContrEm2 { get; set; }
         }
     }
 }

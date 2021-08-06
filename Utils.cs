@@ -12,10 +12,10 @@ namespace SubtitleParser
         public const int SubtitleMaximumDisplayMilliseconds = 8000; //8秒
         public const int MinimumMillisecondsBetweenLines = 24; //
 
-        public static TimeSpan Ticks2TimeSpan(uint ticks, bool IsPal = false)
+        public static TimeSpan Ticks2TimeSpan(uint ticks, FPS fps = FPS.NTSC)
         {
             float ticksPerMillisecond = 90.000F;
-            if (!IsPal)
+            if (fps == FPS.NTSC)
             {
                 ticksPerMillisecond = 90.090F * (23.976F / 24F);
             }
@@ -102,22 +102,6 @@ namespace SubtitleParser
             }
         }
 
-        public static string IntToHex(UInt64 value, int digits)
-        {
-            return value.ToString("X").PadLeft(digits, '0');
-        }
-
-        public static string IntToHex(int value, int digits)
-        {
-            return value.ToString("X").PadLeft(digits, '0');
-        }
-
-        public static string IntToBin(long value, int digits)
-        {
-            return Convert.ToString(value, 2).PadLeft(digits, '0');
-        }
-
-
         public static (uint r, uint g, uint b) YCbCr2Rgb(uint y, uint cb, uint cr)
         {
             double r, g, b;
@@ -139,6 +123,11 @@ namespace SubtitleParser
 
             return ((uint)r, (uint)g, (uint)b);
         }
+    }
 
+    public enum FPS
+    {
+        PAL,
+        NTSC,
     }
 }

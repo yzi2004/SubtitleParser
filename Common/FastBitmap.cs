@@ -60,6 +60,12 @@ namespace SubtitleParser.Common
             _bitmapData[pos + 3] = color.A;
         }
 
+        //public void DropSpace()
+        //{
+        //    for()
+
+        //}
+
         public void AddMargin(int margin, Color color)
         {
             int newWidth = _width + margin * 2;
