@@ -1,7 +1,8 @@
-﻿using System;
-using System.Drawing;
+﻿using System.Drawing;
 using System.Drawing.Imaging;
+using System.IO;
 using System.Runtime.InteropServices;
+using static SubtitleParser.AppSettings;
 
 namespace SubtitleParser.Common
 {
@@ -60,52 +61,266 @@ namespace SubtitleParser.Common
             _bitmapData[pos + 3] = color.A;
         }
 
-        //public void DropSpace()
-        //{
-        //    for()
-
-        //}
-
-        public void AddMargin(int margin, Color color)
+        public void Makeup(Color background, Border border)
         {
-            int newWidth = _width + margin * 2;
-            int newHeight = _height + margin * 2;
-            var newBitmapData = new byte[newWidth * newHeight * 4];
+            var trimd = Trim(background);
+            int newWidth = trimd.maxX - trimd.minX + border.Width * 2 + border.Padding * 2;
+            int newHeight = trimd.maxY - trimd.minY + border.Width * 2 + border.Padding * 2;
 
-            byte[] byt = new byte[] { color.R, color.G, color.B, color.A };
+            byte[] bytBG = new byte[] { background.R, background.G, background.B, background.A };
+            byte[] bytBD = new byte[] { border.BorderColor.R, border.BorderColor.G, border.BorderColor.B, border.BorderColor.A };
 
+            MemoryStream ms = new MemoryStream();
 
-            for (int y = 0; y < newHeight; y++)
+            //write top border
+            if (border.Width > 0)
             {
-                //top margin and bottom margin
-                if (y < margin || y >= _height + margin)
+                for (int y = 0; y < border.Width; y++)
                 {
                     for (int x = 0; x < newWidth; x++)
                     {
-                        Buffer.BlockCopy(byt, 0, newBitmapData, (y * newWidth * 4) + x * 4, 4);
-                    }
-                }
-                else
-                {
-                    //left Margin
-                    for (int x = 0; x < margin; x++)
-                    {
-                        Buffer.BlockCopy(byt, 0, newBitmapData, y * newWidth * 4 + x * 4, 4);
-                    }
-                    //body
-                    Buffer.BlockCopy(_bitmapData, (y - margin) * _width * 4, newBitmapData, y * newWidth * 4 + margin * 4, _width * 4);
-
-                    //right margin
-                    for (int x = _width + margin; x < newWidth; x++)
-                    {
-                        Buffer.BlockCopy(byt, 0, newBitmapData, y * newWidth * 4 + x * 4, 4);
+                        ms.Write(bytBD, 0, 4);
                     }
                 }
             }
 
+            //write top padding
+            if (border.Padding > 0)
+            {
+                for (int y = 0; y < border.Padding; y++)
+                {
+                    for (int x = 0; x < newWidth; x++)
+                    {
+                        if (x < border.Width || x >= newWidth - border.Width)
+                        {
+                            ms.Write(bytBD, 0, 4);
+                        }
+                        else
+                        {
+                            ms.Write(bytBG, 0, 4);
+                        }
+                    }
+                }
+            }
+
+            for (int y = trimd.minY; y < trimd.maxY; y++)
+            {
+                //write left border
+                for (int x = 0; x < border.Width; x++)
+                {
+                    ms.Write(bytBD, 0, 4);
+                }
+                //write left padding
+                for (int x = 0; x < border.Padding; x++)
+                {
+                    ms.Write(bytBG, 0, 4);
+                }
+
+                int offset = (trimd.minX * 4) + (y * _width * 4);
+                int count = (trimd.maxX - trimd.minX) * 4;
+                ms.Write(_bitmapData, offset, count);
+
+                //write right padding
+                for (int x = 0; x < border.Padding; x++)
+                {
+                    ms.Write(bytBG, 0, 4);
+                }
+
+                //write right border
+                for (int x = 0; x < border.Width; x++)
+                {
+                    ms.Write(bytBD, 0, 4);
+                }
+            }
+
+            //write bottom padding
+            if (border.Padding > 0)
+            {
+                for (int y = 0; y < border.Padding; y++)
+                {
+                    for (int x = 0; x < newWidth; x++)
+                    {
+                        if (x < border.Width || x >= newWidth - border.Width)
+                        {
+                            ms.Write(bytBD, 0, 4);
+                        }
+                        else
+                        {
+                            ms.Write(bytBG, 0, 4);
+                        }
+                    }
+                }
+            }
+
+            //write bottom border
+            if (border.Width > 0)
+            {
+                for (int y = 0; y < border.Width; y++)
+                {
+                    for (int x = 0; x < newWidth; x++)
+                    {
+                        ms.Write(bytBD, 0, 4);
+                    }
+                }
+            }
+
+            _bitmapData = ms.ToArray();
+
             _width = newWidth;
             _height = newHeight;
-            _bitmapData = newBitmapData;
+        }
+
+        private (int minX, int minY, int maxX, int maxY) Trim(Color background)
+        {
+            int minY = -1, maxY = -1, minX = -1, maxX = -1;
+            //Top
+            for (int y = 0; y < _height; y++)
+            {
+                bool canTrim = true;
+                for (int x = 0; x < _width; x++)
+                {
+                    var pos = (x * 4) + (y * _width * 4);
+                    if (_bitmapData[pos + 3] != 0 &&
+                        (_bitmapData[pos] != background.B ||
+                        _bitmapData[pos + 1] != background.G) ||
+                        _bitmapData[pos + 2] != background.R)
+                    {
+                        canTrim = false;
+                        break;
+                    }
+                }
+
+                if (canTrim)
+                {
+                    minY = y;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            //bottom
+
+            for (int y = _height - 1; y >= 0; y--)
+            {
+                bool canTrim = true;
+                for (int x = 0; x < _width; x++)
+                {
+                    var pos = (x * 4) + (y * _width * 4);
+                    if (_bitmapData[pos + 3] != 0 &&
+                        (_bitmapData[pos] != background.B ||
+                        _bitmapData[pos + 1] != background.G) ||
+                        _bitmapData[pos + 2] != background.R)
+                    {
+                        canTrim = false;
+                        break;
+                    }
+                }
+
+                if (canTrim)
+                {
+                    maxY = y;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            //left
+            for (int x = 0; x < _width; x++)
+            {
+                bool canTrim = true;
+                for (int y = 0; y < _height; y++)
+
+                {
+                    var pos = (x * 4) + (y * _width * 4);
+                    if (_bitmapData[pos + 3] != 0 &&
+                        (_bitmapData[pos] != background.B ||
+                        _bitmapData[pos + 1] != background.G) ||
+                        _bitmapData[pos + 2] != background.R)
+                    {
+                        canTrim = false;
+                        break;
+                    }
+                }
+
+                if (canTrim)
+                {
+                    minX = x;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            //right
+            for (int x = _width - 1; x >= 0; x--)
+            {
+                bool canTrim = true;
+                for (int y = 0; y < _height; y++)
+
+                {
+                    var pos = (x * 4) + (y * _width * 4);
+                    if (_bitmapData[pos + 3] != 0 &&
+                        (_bitmapData[pos] != background.B ||
+                        _bitmapData[pos + 1] != background.G) ||
+                        _bitmapData[pos + 2] != background.R)
+                    {
+                        canTrim = false;
+                        break;
+                    }
+                }
+
+                if (canTrim)
+                {
+                    maxX = x;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if (minX == -1 || minX == 0)
+            {
+                minX = 0;
+            }
+            else
+            {
+                minX--;
+            }
+
+            if (minY == -1 || minY == 0)
+            {
+                minY = 0;
+            }
+            else
+            {
+                minY--;
+            }
+
+            if (maxX == -1 || maxX == _width - 1)
+            {
+                maxX = _width - 1;
+            }
+            else
+            {
+                maxX++;
+            }
+
+            if (maxY == -1 || maxY == _height - 1)
+            {
+                maxY = _height - 1;
+            }
+            else
+            {
+                maxY++;
+            }
+
+            return (minX, minY, maxX, maxY);
         }
 
         public Bitmap GetBitmap()

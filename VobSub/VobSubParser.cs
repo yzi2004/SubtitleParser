@@ -5,7 +5,6 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
-using static SubtitleParser.VobSub.SPU;
 
 namespace SubtitleParser.VobSub
 {
@@ -14,7 +13,6 @@ namespace SubtitleParser.VobSub
         AppSettings _settings = null;
         List<SPU> _spuList = new List<SPU>();
         List<Color> _palettes = new List<Color>();
-        StreamWriter swTrace;
 
         public VobSubParser(AppSettings settings)
         {
@@ -79,11 +77,9 @@ namespace SubtitleParser.VobSub
                         spu.SPDCSQs.ForEach(dcsq =>
                         {
                             Console.Write("@");
-                            swTrace = new StreamWriter($"{imgFolder}\\{idx:0000}.txt");
                             string file = $"{idx:0000}.{_settings.GetImgExt()}";
                             var bmp = ImgDecode(spu, dcsq);
                             bmp.Save($"{imgFolder}\\{file}", _settings.image.ImageFormat);
-                            swTrace.Close();
                             sw.WriteLine(idx++);
                             var startTime = spu.StartTime + dcsq.Start;
                             var stopTime = spu.StartTime + dcsq.Stop;
@@ -93,8 +89,6 @@ namespace SubtitleParser.VobSub
                         });
                     }
                 });
-
-                sw.Close();
             }
         }
 
@@ -297,14 +291,8 @@ namespace SubtitleParser.VobSub
             br.Goto(dcsq.PXDbfOffset);
             drawLines(br, fastBitmap, 1, dcsq);
 
-            if (_settings.image.Border.Padding > 0)
-            {
-                fastBitmap.AddMargin(_settings.image.Border.Padding, _settings.sup.Background);
-            }
-            if (_settings.image.Border.Width > 0)
-            {
-                fastBitmap.AddMargin(_settings.image.Border.Width, _settings.image.Border.BorderColor);
-            }
+            var color = GetColor(dcsq, 0);
+            fastBitmap.Makeup(color,_settings.image.Border);
 
             return fastBitmap.GetBitmap();
         }
@@ -328,15 +316,7 @@ namespace SubtitleParser.VobSub
                 {
                     for (; ; )
                     {
-                        swTrace.Write(clrLen.colorIdx);
-                        if (xPos % 10 == 0 || yPos % 10 == 0)
-                        {
-                            fastBitmap.SetPixel(xPos++, yPos, Color.Red);
-                        }
-                        else
-                        {
-                            fastBitmap.SetPixel(xPos++, yPos, color);
-                        }
+                        fastBitmap.SetPixel(xPos++, yPos, color);
 
                         if (xPos >= dcsq.ImgSize.Width + 1)
                         {
@@ -345,29 +325,19 @@ namespace SubtitleParser.VobSub
                     }
                     xPos = 0;
                     yPos += 2;
-                    swTrace.WriteLine();
                     br.ResetHalfByte();
                 }
                 else
                 {
                     for (int i = 0; i < clrLen.runLength; i++)
                     {
-                        swTrace.Write(clrLen.colorIdx);
-                        if (xPos % 10 == 0 || yPos % 10 == 0)
-                        {
-                            fastBitmap.SetPixel(xPos++, yPos, Color.Red);
-                        }
-                        else
-                        {
-                            fastBitmap.SetPixel(xPos++, yPos, color);
-                        }
+                        fastBitmap.SetPixel(xPos++, yPos, color);
 
                         if (xPos >= dcsq.ImgSize.Width + 1)
                         {
                             xPos = 0;
                             yPos += 2;
                             br.ResetHalfByte();
-                            swTrace.WriteLine();
                             break;
                         }
                     }
@@ -375,46 +345,45 @@ namespace SubtitleParser.VobSub
             }
         }
 
-
         private (byte colorIdx, byte runLength) GetColorRunLength(ParseUseBinaryReader br)
         {
             byte runLength, colorIdx;
 
             //load first 4 bit
-            byte b1 = br.ReadFourBit();
-            if ((b1 & 0b00001100) != 0)
+            uint buf = br.ReadFourBit();
+            if ((buf & 0b00001100) != 0)
             {
                 //1-3	4	n n c c
-                runLength = (byte)(b1 >> 2);
-                colorIdx = (byte)(b1 & 0b0011);
+                runLength = (byte)(buf >> 2);
+                colorIdx = (byte)(buf & 0b0011);
 
                 return (colorIdx, runLength);
             }
             //load next 4 bit
-            b1 = (byte)((b1 << 4) | br.ReadFourBit());
+            buf = (byte)((buf << 4) | br.ReadFourBit());
 
             //4-15	8	0 0 n n n n c c
-            if ((b1 & 0b00110000) != 0)
+            if ((buf & 0b00110000) != 0)
             {
-                runLength = (byte)(b1 >> 2);
-                colorIdx = (byte)(b1 & 0b00000011);
+                runLength = (byte)(buf >> 2);
+                colorIdx = (byte)(buf & 0b00000011);
                 return (colorIdx, runLength);
             }
 
             //16-63	12	0 0 0 0 n n n n n n c c
-            if ((b1 & 0b00001100) != 0)
+            if ((buf & 0b00001100) != 0)
             {
-                b1 = (byte)((b1 << 4) | br.ReadFourBit());
+                buf = (byte)((buf << 4) | br.ReadFourBit());
 
-                runLength = (byte)(b1 >> 2);
-                colorIdx = (byte)(b1 & 0b00000011);
+                runLength = (byte)(buf >> 2);
+                colorIdx = (byte)(buf & 0b00000011);
                 return (colorIdx, runLength);
             }
 
             //64-255	16	0 0 0 0 0 0 n n n n n n n n c c
-            int buf = b1 << 8 | br.ReadByte(true);
+            buf = buf << 8 | br.ReadByte(true);
             runLength = (byte)(buf >> 2);
-            colorIdx = (byte)(b1 & 0b0000000011);
+            colorIdx = (byte)(buf & 0b0000000011);
 
             return (colorIdx, runLength);
         }

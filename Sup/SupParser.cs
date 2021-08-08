@@ -333,14 +333,7 @@ namespace SubtitleParser.Sup
                 }
             }
 
-            if (_settings.image.Border.Padding > 0)
-            {
-                fastBitmap.AddMargin(_settings.image.Border.Padding, _settings.sup.Background);
-            }
-            if (_settings.image.Border.Width > 0)
-            {
-                fastBitmap.AddMargin(_settings.image.Border.Width, _settings.image.Border.BorderColor);
-            }
+            fastBitmap.Makeup(_settings.sup.Background, _settings.image.Border);
 
             return fastBitmap.GetBitmap();
         }
