@@ -84,7 +84,7 @@ namespace SubtitleParser.Sup
                         return;
                     }
                     sw.WriteLine(dsIdx);
-                    sw.WriteLine($"{startDS.PCSData.PTS:HH:mm:ss,fff} --> {ds.PCSData.PTS:HH:mm:ss,fff}");
+                    sw.WriteLine($"{startDS.PCSData.PTS:hh\\:mm\\:ss\\,fff} --> {ds.PCSData.PTS:hh\\:mm\\:ss\\,fff}");
                     sw.WriteLine(sbImgs.ToString());
                     sbImgs = new StringBuilder();
                 }
@@ -291,7 +291,7 @@ namespace SubtitleParser.Sup
                 {
                     break;
                 }
-                var ColorTimes = GetColorTimes(data, pos);
+                var ColorTimes = GetColorTimes(data, ref pos);
 
                 if (ColorTimes.colorIdx == 0 && ColorTimes.times == 0)
                 {
@@ -310,13 +310,34 @@ namespace SubtitleParser.Sup
                                 palettes[ColorTimes.colorIdx].ColorDifferenceRed,
                                 palettes[ColorTimes.colorIdx].ColorDifferenceBlue);
 
-                        if (palettes[ColorTimes.colorIdx].Transparency != 255)
+                        if (_settings.sup.ConvColorForOCR)
                         {
-                            color = _settings.sup.Background;
+                            if (palettes[ColorTimes.colorIdx].Transparency != 255)
+                            {
+                                color = _settings.sup.Background;
+                            }
+                            else
+                            {
+                                if (rgb.r + rgb.g + rgb.b < 200)
+                                {
+                                    color = _settings.sup.Background;
+                                }
+                                else
+                                {
+                                    color = Color.Black;
+                                }
+                            }
                         }
                         else
                         {
-                            color = Color.FromArgb(0xff, (int)rgb.r, (int)rgb.g, (int)rgb.b);
+                            if (palettes[ColorTimes.colorIdx].Transparency < 1)
+                            {
+                                color = _settings.sup.Background;
+                            }
+                            else
+                            {
+                                color = Color.FromArgb(0xff, (int)rgb.r, (int)rgb.g, (int)rgb.b);
+                            }
                         }
                     }
 
@@ -338,7 +359,7 @@ namespace SubtitleParser.Sup
             return fastBitmap.GetBitmap();
         }
 
-        private (int colorIdx, ushort times) GetColorTimes(byte[] data, int pos)
+        private (int colorIdx, ushort times) GetColorTimes(byte[] data, ref int pos)
         {
             byte b0 = data[pos++];
             if (b0 != 0) //CCCCCCCC

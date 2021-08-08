@@ -2,7 +2,7 @@
   "profiles": {
     "SubtitleParser": {
       "commandName": "Project",
-      "commandLineArgs": "-i  E:\\subtitles\\1627814516986\\Manderlay_2005.sub --fps pal"
+      "commandLineArgs": "-i  E:\\subtitles\\1627295118337\\bb.sup --fps pal"
     }
   }
 }

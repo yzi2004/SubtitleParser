@@ -108,6 +108,12 @@ namespace SubtitleParser
             {
                 val = section["background"];
                 sup.Background = Utils.TryParseColor(val, Color.Transparent);
+
+                val = section["convert_color_for_OCR"];
+                if (!string.IsNullOrWhiteSpace(val) && val.ToLower() != "false")
+                {
+                    sup.ConvColorForOCR = true;
+                }
             }
         }
 
@@ -190,7 +196,7 @@ namespace SubtitleParser
         public class Sup
         {
             public Color Background { get; set; } = Color.Transparent;
-            public bool ConvToBWColor { get; set; }
+            public bool ConvColorForOCR { get; set; }
         }
     }
 }
