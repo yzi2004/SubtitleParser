@@ -1,8 +1,6 @@
 ﻿using SubtitleParser.Sup;
 using SubtitleParser.VobSub;
 using System;
-using System.Drawing;
-using System.Drawing.Imaging;
 
 namespace SubtitleParser
 {
@@ -54,11 +52,11 @@ namespace SubtitleParser
         private static void PrintUsage()
         {
             PrintVer();
-            Console.WriteLine("Usage: " + Utils.GetAppName() + " -i|--input input_file --pal  -o|-out <path> -f|-format {bmp|jpeg|gif|tiff|png}");
+            Console.WriteLine("Usage: " + Utils.GetAppName() + " -i|--input input_file --fps pal|ntsc  -o|-out <path> -f|-format {bmp|jpeg|gif|tiff|png}");
             Console.WriteLine("  -i,--input\t: subtitle file for parse (*.sup|*.sub) ");
             Console.WriteLine("  -o,--out\t: folder path for time line and images file to save.");
             Console.WriteLine("  -f,--format\t: image format. (default:jpeg)");
-            Console.WriteLine("  --pal\t: vobsub(*.sub) is pal. default:false  ");
+            Console.WriteLine("  --fps\t: vobsub(*.sub) frames per second(pal/ntsc). (default: pal) ");
             Console.WriteLine();
         }
 

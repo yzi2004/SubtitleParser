@@ -2,7 +2,6 @@
 using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
-using static SubtitleParser.AppSettings;
 
 namespace SubtitleParser.Common
 {
@@ -61,7 +60,7 @@ namespace SubtitleParser.Common
             _bitmapData[pos + 3] = color.A;
         }
 
-        public void Makeup(Color background, Border border)
+        public void Makeup(Color background, AppSettings.Border border)
         {
             var trimd = Trim(background);
             int newWidth = trimd.maxX - trimd.minX + border.Width * 2 + border.Padding * 2;

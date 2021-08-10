@@ -5,6 +5,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
+
 namespace SubtitleParser.Sup
 {
     public class SupParser

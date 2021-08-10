@@ -6,6 +6,10 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
+/// <summary>
+/// http://www.mpucoder.com/DVD/pes-hdr.html
+/// </summary>
+
 namespace SubtitleParser.VobSub
 {
     public class VobSubParser
