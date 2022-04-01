@@ -307,13 +307,19 @@ namespace SubtitleParser.Sup
                     }
                     else
                     {
-                        var rgb = Utils.YCbCr2Rgb(palettes[ColorTimes.colorIdx].Luminance,
-                                palettes[ColorTimes.colorIdx].ColorDifferenceRed,
-                                palettes[ColorTimes.colorIdx].ColorDifferenceBlue);
+                        var colorIdx = ColorTimes.colorIdx;
+                        if (colorIdx >= palettes.Count)
+                        {
+                            colorIdx = palettes.Count - 1;
+                        }
+
+                        var rgb = Utils.YCbCr2Rgb(palettes[colorIdx].Luminance,
+                                palettes[colorIdx].ColorDifferenceRed,
+                                palettes[colorIdx].ColorDifferenceBlue);
 
                         if (_settings.sup.ConvColorForOCR)
                         {
-                            if (palettes[ColorTimes.colorIdx].Transparency != 255)
+                            if (palettes[colorIdx].Transparency != 255)
                             {
                                 color = _settings.sup.Background;
                             }
@@ -331,7 +337,7 @@ namespace SubtitleParser.Sup
                         }
                         else
                         {
-                            if (palettes[ColorTimes.colorIdx].Transparency < 1)
+                            if (palettes[colorIdx].Transparency < 1)
                             {
                                 color = _settings.sup.Background;
                             }
